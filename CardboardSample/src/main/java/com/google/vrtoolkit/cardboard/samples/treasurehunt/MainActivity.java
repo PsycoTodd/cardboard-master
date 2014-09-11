@@ -85,6 +85,7 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
     private int mScore = 0;
     private float mObjectDistance = 12f;
     private float mFloorDepth = 20f;
+    private boolean mEnlarged = false; // Keep a copy of the cube so we know the original size
 
     private Vibrator mVibrator;
 
@@ -363,9 +364,23 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         if (isLookingAtObject()) {
             GLES20.glVertexAttribPointer(mColorParam, 4, GLES20.GL_FLOAT, false,
                     0, mCubeFoundColors);
+            // Try to scale the cube bigger  when user look at it
+            if(mEnlarged == false) {
+                float objectScalingFactor = 2.0f;
+                Matrix.scaleM(mModelCube, 0, objectScalingFactor, objectScalingFactor, objectScalingFactor);
+                //Matrix.multiplyMV(scaleRes, 0, scaleMatrix, 0, mModelCube, 0);
+                //Matrix.setIdentityM(mModelCube, 0);
+                mEnlarged = true;
+            }
+
         } else {
             GLES20.glVertexAttribPointer(mColorParam, 4, GLES20.GL_FLOAT, false,
                     0, mCubeColors);
+            if(mEnlarged == true) {
+                float objectScalingFactor = 0.5f;
+                Matrix.scaleM(mModelCube, 0, objectScalingFactor, objectScalingFactor, objectScalingFactor);
+                mEnlarged = false;
+            }
         }
         GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, 36);
         checkGLError("Drawing cube");
