@@ -58,6 +58,11 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
     private FloatBuffer mFloorColors;
     private FloatBuffer mFloorNormals;
 
+    //Todd
+    private FloatBuffer mMazeVertices;
+    private FloatBuffer mMazeColors;
+    private FloatBuffer mMazeNormals;
+
     private FloatBuffer mCubeVertices;
     private FloatBuffer mCubeColors;
     private FloatBuffer mCubeFoundColors;
@@ -81,6 +86,7 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
     private float[] mModelView;
 
     private float[] mModelFloor;
+    private float[] mModelMaze;
 
     private int mScore = 0;
     private float mObjectDistance = 12f;
@@ -153,6 +159,7 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         mModelViewProjection = new float[16];
         mModelView = new float[16];
         mModelFloor = new float[16];
+        mModelMaze = new float[16];
         mHeadView = new float[16];
         mVibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
@@ -224,6 +231,25 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         mFloorColors.put(DATA.FLOOR_COLORS);
         mFloorColors.position(0);
 
+        // Todd: Now we try to register our maze
+        ByteBuffer bbMazeVertices = ByteBuffer.allocateDirect(DATA.MAZE_COORDS.length * 4);
+        bbMazeVertices.order(ByteOrder.nativeOrder());
+        mMazeVertices = bbMazeVertices.asFloatBuffer();
+        mMazeVertices.put(DATA.MAZE_COORDS);
+        mMazeVertices.position(0);
+
+        ByteBuffer bbMazeNormals = ByteBuffer.allocateDirect(DATA.MAZE_NORMALS.length * 4);
+        bbMazeNormals.order(ByteOrder.nativeOrder());
+        mMazeNormals = bbMazeNormals.asFloatBuffer();
+        mMazeNormals.put(DATA.MAZE_NORMALS);
+        mMazeNormals.position(0);
+
+        ByteBuffer bbMazeColors = ByteBuffer.allocateDirect(DATA.MAZE_COLORS.length * 4);
+        bbMazeColors.order(ByteOrder.nativeOrder());
+        mMazeColors = bbMazeColors.asFloatBuffer();
+        mMazeColors.put(DATA.MAZE_COLORS);
+        mMazeColors.position(0);
+
         int vertexShader = loadGLShader(GLES20.GL_VERTEX_SHADER, R.raw.light_vertex);
         int gridShader = loadGLShader(GLES20.GL_FRAGMENT_SHADER, R.raw.grid_fragment);
 
@@ -240,6 +266,9 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
 
         Matrix.setIdentityM(mModelFloor, 0);
         Matrix.translateM(mModelFloor, 0, 0, -mFloorDepth, 0); // Floor appears below user
+
+        Matrix.setIdentityM(mModelMaze, 0);
+        Matrix.translateM(mModelMaze, 0, -40, -40, 0);
 
         checkGLError("onSurfaceCreated");
     }
@@ -328,6 +357,12 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         Matrix.multiplyMM(mModelViewProjection, 0, transform.getPerspective(), 0,
             mModelView, 0);
         drawFloor(transform.getPerspective());
+
+        // Now we just use the matrix of the floor and try the maze, let's see how it looks like
+        Matrix.multiplyMM(mModelView, 0, mView, 0, mModelMaze, 0);
+        Matrix.multiplyMM(mModelViewProjection, 0, transform.getPerspective(), 0,
+                mModelView, 0);
+       drawMaze(transform.getPerspective());
     }
 
     @Override
@@ -406,6 +441,27 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, 6);
 
         checkGLError("drawing floor");
+    }
+
+    /**
+     * Draw the maze.Need to draw after the light has been set up or the shade may look strange (base
+     * on what google said.
+     */
+    public void drawMaze(float[] perspective) {
+        // This is the floor, kinda of!
+        GLES20.glUniform1f(mIsFloorParam, 1f);
+
+        // Set ModelView, MVP, position, normals, and color
+        GLES20.glUniformMatrix4fv(mModelParam, 1, false, mModelFloor, 0);
+        GLES20.glUniformMatrix4fv(mModelViewParam, 1, false, mModelView, 0);
+        GLES20.glUniformMatrix4fv(mModelViewProjectionParam, 1, false, mModelViewProjection, 0);
+        GLES20.glVertexAttribPointer(mPositionParam, COORDS_PER_VERTEX, GLES20.GL_FLOAT,
+                false, 0, mMazeVertices);
+        GLES20.glVertexAttribPointer(mNormalParam, 3, GLES20.GL_FLOAT, false, 0, mMazeNormals);
+        GLES20.glVertexAttribPointer(mColorParam, 4, GLES20.GL_FLOAT, false, 0, mMazeColors);
+        GLES20.glDrawArrays(GLES20.GL_TRIANGLES, 0, 6*10); //If you have more face, you need to draw more here
+
+        checkGLError("drawing maze!");
     }
 
     /**
