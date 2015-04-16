@@ -23,6 +23,7 @@ import android.os.Bundle;
 import android.os.Vibrator;
 import android.util.Log;
 import com.google.vrtoolkit.cardboard.*;
+import android.util.FloatMath;
 
 import javax.microedition.khronos.egl.EGLConfig;
 import java.io.BufferedReader;
@@ -32,7 +33,6 @@ import java.io.InputStreamReader;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
-
 /**
  * A Cardboard sample application.
  */
@@ -41,9 +41,10 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
     private static final String TAG = "MainActivity";
 
     private static final float CAMERA_Z = 0.01f;
+    private static final float CAMERA_Y  = -17f;
     private static final float TIME_DELTA = 0.3f;
 
-    private static final float YAW_LIMIT = 0.12f;
+    private static final float YAW_LIMIT = 0.12f; //0.12f in origin
     private static final float PITCH_LIMIT = 0.12f;
 
     // We keep the light always position just above the user.
@@ -89,13 +90,17 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
     private float[] mModelMaze;
 
     private int mScore = 0;
-    private float mObjectDistance = 12f;
+    private float mObjectDistance = 20f;
     private float mFloorDepth = 20f;
     private boolean mEnlarged = false; // Keep a copy of the cube so we know the original size
 
     private Vibrator mVibrator;
 
     private CardboardOverlayView mOverlayView;
+
+    private boolean isWalking = false;
+    private boolean mUpdateHeadDir = true;
+    private float[] mWalkingDir;
 
     /**
      * Converts a raw text file, saved as a resource, into an OpenGL ES shader
@@ -161,6 +166,7 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         mModelFloor = new float[16];
         mModelMaze = new float[16];
         mHeadView = new float[16];
+        mWalkingDir = new float[3];
         mVibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
 
 
@@ -270,6 +276,9 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         Matrix.setIdentityM(mModelMaze, 0);
         Matrix.translateM(mModelMaze, 0, -40, -40, 0);
 
+        // Build the camera matrix and apply it to the ModelView. Todd: put the matrix lower
+        Matrix.setLookAtM(mCamera, 0, 0.0f, CAMERA_Y, CAMERA_Z, 0.0f, CAMERA_Y, 0.0f, 0.0f, 1.0f, 0.0f);
+
         checkGLError("onSurfaceCreated");
     }
 
@@ -312,8 +321,18 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         // Build the Model part of the ModelView matrix.
         Matrix.rotateM(mModelCube, 0, TIME_DELTA, 0.5f, 0.5f, 1.0f);
 
-        // Build the camera matrix and apply it to the ModelView.
-        Matrix.setLookAtM(mCamera, 0, 0.0f, 0.0f, CAMERA_Z, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f);
+        // Build the camera matrix and apply it to the ModelView. Todd: put the matrix lower
+     //   Matrix.setLookAtM(mCamera, 0, 0.0f, CAMERA_Y, CAMERA_Z, 0.0f, CAMERA_Y, 0.0f, 0.0f, 1.0f, 0.0f);
+        if (isWalking) {
+            if (mUpdateHeadDir == true) {// This time we need to get the head pose information
+                headTransform.getForwardVector(mWalkingDir, 0);
+                mUpdateHeadDir = false;
+            }
+            float sqrsumXZ = FloatMath.sqrt(mWalkingDir[0]*mWalkingDir[0] + mWalkingDir[2]*mWalkingDir[2]);
+            float xforce = TIME_DELTA*0.4f * mWalkingDir[0]/sqrsumXZ;
+            float zforce = TIME_DELTA*0.4f * mWalkingDir[2]/sqrsumXZ;
+            Matrix.translateM(mCamera, 0, xforce, 0, -zforce);
+        }
 
         headTransform.getHeadView(mHeadView, 0);
 
@@ -479,6 +498,19 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         } else {
             mOverlayView.show3DToast("Look around to find the object!");
         }
+
+        // Todd: Self-implemented cardboard trigger event so when push, camera start to walk, and when
+        //pulled again, it stops working.the walking direction is follow the center where user looks at
+        if (isWalking) {
+            isWalking = false;
+            mOverlayView.show3DToast("STOP!");
+        }
+        else{
+            isWalking = true;
+            mUpdateHeadDir = true;
+            mOverlayView.show3DToast("Let's walk around!");
+            //find where the user looks at, and this will be the next walking direction
+        }
         // Always give user feedback
         mVibrator.vibrate(50);
     }
@@ -507,6 +539,7 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         float newY = (float)Math.tan(angleY) * mObjectDistance;
 
         Matrix.setIdentityM(mModelCube, 0);
+     //   Matrix.translateM(mModelCube, 0, posVec[0], -17f, posVec[2]);
         Matrix.translateM(mModelCube, 0, posVec[0], newY, posVec[2]);
     }
 
