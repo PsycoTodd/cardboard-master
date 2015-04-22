@@ -294,30 +294,30 @@ public final class WorldLayoutData {
 
             //Now we set up the inside walls
             //face first
+            4f, 50f, -46f,
             4f, 0, -4f,
             4f, 50f, -4f,
-            4f, 50f, -46f,
             4f, 0, -4f,
             4f, 50f, -46f,
             4f, 0, -46f,
             //face two
+            46f, 50f, -46f,
             4f, 0, -46f,
             4f, 50f, -46f,
-            46f, 50f, -46f,
             4f, 0, -46f,
             46f, 50f, -46f,
             46f, 0, -46f,
             //face three
+            46f, 50f, -4f,
             46f, 0, -46f,
             46f, 50f, -46f,
-            46f, 50f, -4f,
             46f, 0, -46f,
             46f, 50f, -4f,
             46f, 0, -4f,
             //face four
+            4f, 50f, -4f,
             46f, 0, -4f,
             46f, 50f, -4f,
-            4f, 50f, -4f,
             46f, 0, -4f,
             4f, 50f, -4f,
             4f, 0, -4f,

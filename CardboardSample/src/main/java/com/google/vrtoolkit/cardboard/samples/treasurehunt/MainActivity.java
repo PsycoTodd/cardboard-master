@@ -44,8 +44,8 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
     private static final float CAMERA_Y  = -17f;
     private static final float TIME_DELTA = 0.3f;
 
-    private static final float YAW_LIMIT = 0.12f; //0.12f in origin
-    private static final float PITCH_LIMIT = 0.12f;
+    private static final float YAW_LIMIT = 0.72f; //0.12f in origin
+    private static final float PITCH_LIMIT = 0.72f;
 
     // We keep the light always position just above the user.
     private final float[] mLightPosInWorldSpace = new float[] {0.0f, 2.0f, 0.0f, 1.0f};
@@ -85,6 +85,7 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
     private float[] mHeadView;
     private float[] mModelViewProjection;
     private float[] mModelView;
+    private float[] tempCamera; //used to test collision
 
     private float[] mModelFloor;
     private float[] mModelMaze;
@@ -93,6 +94,7 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
     private float mObjectDistance = 20f;
     private float mFloorDepth = 20f;
     private boolean mEnlarged = false; // Keep a copy of the cube so we know the original size
+    private boolean GODMODE = false; // We can get through walls in this mode
 
     private Vibrator mVibrator;
 
@@ -168,6 +170,7 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         mHeadView = new float[16];
         mWalkingDir = new float[3];
         mVibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        tempCamera = new float[16];
 
 
         mOverlayView = (CardboardOverlayView) findViewById(R.id.overlay);
@@ -268,15 +271,15 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
 
         // Object first appears directly in front of user
         Matrix.setIdentityM(mModelCube, 0);
-        Matrix.translateM(mModelCube, 0, 0, 0, -mObjectDistance);
+        Matrix.translateM(mModelCube, 0, 0, CAMERA_Y, -mObjectDistance);
 
         Matrix.setIdentityM(mModelFloor, 0);
         Matrix.translateM(mModelFloor, 0, 0, -mFloorDepth, 0); // Floor appears below user
 
         Matrix.setIdentityM(mModelMaze, 0);
-        Matrix.translateM(mModelMaze, 0, -40, -40, 0);
+        Matrix.translateM(mModelMaze, 0, 0, -40, 0);
 
-        // Build the camera matrix and apply it to the ModelView. Todd: put the matrix lower
+        // Build the camera matrix and apply it to the ModelView. Todd: put the matrix lower to the floor by -17 = CAMERA_Y
         Matrix.setLookAtM(mCamera, 0, 0.0f, CAMERA_Y, CAMERA_Z, 0.0f, CAMERA_Y, 0.0f, 0.0f, 1.0f, 0.0f);
 
         checkGLError("onSurfaceCreated");
@@ -305,6 +308,48 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
     }
 
     /**
+     * Try to see if the current point is inside the geometry or not
+     * Just realize that this collision detection is simply a inside outside test of point
+     * @param pt The location of the camera as (x, y, z)
+     * @param geometry The object it may hit
+     * @return
+     */
+    protected boolean notCollision(float [] pt, FloatBuffer geometry){
+
+        boolean [] hit = {false, false, false, false};
+        float[] boundRange = {0.5f,0.5f,0.5f,-0.5f,-0.5f,0.5f,-0.5f,-0.5f};
+        int ptNum_Sqr = 6*3;
+        // in this maze in a flat surface, we actually can do a point inside outside polygon test in XZ plane
+        float xc = -pt[12], zc = -pt[14]; //-40 for x since we move the maze negative 40 before we set it.
+        float x, z;
+        // Now we just traverse the entire maze wall and only focus on boundary defined by the XZ
+        int ptNum = geometry.capacity();
+        int range = ptNum/ptNum_Sqr; //Two triangle per square wall
+        float p1x, p1z, p2x, p2z;
+     //   float [] tempBuffer = new float[ptNum_Sqr];
+     //   geometry.position(0);
+        for(int i=0; i<range; ++i){
+          //  geometry.get(tempBuffer, 0, ptNum_Sqr);
+            p1x = geometry.get(i*ptNum_Sqr+0); p1z = geometry.get(i*ptNum_Sqr+2);
+            p2x = geometry.get(i*ptNum_Sqr+3); p2z = geometry.get(i*ptNum_Sqr+5);
+       /*     p1x = DATA.MAZE_COORDS[i*ptNum_Sqr+0]; p1z = DATA.MAZE_COORDS[i*ptNum_Sqr+2];
+            p2x = DATA.MAZE_COORDS[i*ptNum_Sqr+3]; p2z = DATA.MAZE_COORDS[i*ptNum_Sqr+5];*/
+
+            for(int j=0; j<4; ++j) { // we test on four bounding point of the camera
+                x = xc+boundRange[2*j];
+                z = zc+boundRange[2*j+1];
+                if ((p1z < z && p2z >= z || p2z < z && p1z >= z) && (p1x <= x || p2x <= x)) {
+                    if (p1x + (z - p1z) / (p2z - p1z) * (p2x - p1x) < x)
+                        hit[j] = !hit[j];
+                }
+            }
+        }
+        boolean res = true;
+        for(int i=0; i<4;++i)
+            res &= hit[i];
+        return res;
+    }
+    /**
      * Prepares OpenGL ES before we draw a frame.
      * @param headTransform The head transformation in the new frame.
      */
@@ -331,7 +376,13 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
             float sqrsumXZ = FloatMath.sqrt(mWalkingDir[0]*mWalkingDir[0] + mWalkingDir[2]*mWalkingDir[2]);
             float xforce = TIME_DELTA*0.4f * mWalkingDir[0]/sqrsumXZ;
             float zforce = TIME_DELTA*0.4f * mWalkingDir[2]/sqrsumXZ;
-            Matrix.translateM(mCamera, 0, xforce, 0, -zforce);
+
+            // Todd: we also need to stop the the camera movement if user hit the wall
+            System.arraycopy(mCamera, 0, tempCamera, 0, mCamera.length);
+            Matrix.translateM(tempCamera, 0, xforce, 0, -zforce);
+            if(!GODMODE && notCollision(tempCamera,mMazeVertices )){ //we only move when we don't hit anything
+                System.arraycopy(tempCamera, 0, mCamera, 0, tempCamera.length);
+            }
         }
 
         headTransform.getHeadView(mHeadView, 0);
@@ -534,13 +585,14 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
         Matrix.multiplyMV(posVec, 0, rotationMatrix, 0, mModelCube, 12);
 
         // Now get the up or down angle, between -20 and 20 degrees
-        float angleY = (float) Math.random() * 80 - 40; // angle in Y plane, between -40 and 40
+      /*  float angleY = (float) Math.random() * 80 - 40; // angle in Y plane, between -40 and 40
         angleY = (float) Math.toRadians(angleY);
-        float newY = (float)Math.tan(angleY) * mObjectDistance;
+        float newY = (float)Math.tan(angleY) * mObjectDistance;*/
 
         Matrix.setIdentityM(mModelCube, 0);
      //   Matrix.translateM(mModelCube, 0, posVec[0], -17f, posVec[2]);
-        Matrix.translateM(mModelCube, 0, posVec[0], newY, posVec[2]);
+       // Matrix.translateM(mModelCube, 0, posVec[0], newY, posVec[2]);
+        Matrix.translateM(mModelCube, 0, posVec[0], CAMERA_Y, posVec[2]);
     }
 
     /**
@@ -548,7 +600,7 @@ public class MainActivity extends CardboardActivity implements CardboardView.Ste
      * @return
      */
     private boolean isLookingAtObject() {
-        float[] initVec = {0, 0, 0, 1.0f};
+        float[] initVec = {0, 0, 1.0f, 1.0f};
         float[] objPositionVec = new float[4];
 
         // Convert object space to camera space. Use the headView from onNewFrame.
